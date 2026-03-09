@@ -3,6 +3,7 @@ import express from 'express';
 import multer from 'multer';
 import Anthropic from '@anthropic-ai/sdk';
 import { pdf } from 'pdf-to-img';
+import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -32,6 +33,57 @@ const anthropic = new Anthropic();
 // Middleware
 app.use(express.json({ limit: '100mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Max base64 size for Claude Vision API (5MB raw = ~3.75MB base64 threshold to be safe)
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4MB base64 target (~3MB raw)
+
+/**
+ * Compress an image buffer so its base64 representation stays under Claude's 5MB limit.
+ * Progressively reduces quality and resolution until it fits.
+ */
+async function compressImage(buffer, mediaType) {
+  let base64 = buffer.toString('base64');
+
+  // Already under limit — return as-is
+  if (base64.length <= MAX_IMAGE_BYTES) {
+    return { base64, mediaType };
+  }
+
+  console.log(`Image too large (${(base64.length / 1024 / 1024).toFixed(1)}MB base64), compressing...`);
+
+  // Convert to JPEG for best compression, try progressively lower quality/size
+  const attempts = [
+    { width: 2048, quality: 85 },
+    { width: 1600, quality: 80 },
+    { width: 1200, quality: 75 },
+    { width: 1024, quality: 70 },
+    { width: 800, quality: 60 },
+  ];
+
+  for (const { width, quality } of attempts) {
+    const compressed = await sharp(buffer)
+      .resize(width, undefined, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality, mozjpeg: true })
+      .toBuffer();
+
+    base64 = compressed.toString('base64');
+
+    if (base64.length <= MAX_IMAGE_BYTES) {
+      console.log(`  Compressed to ${(base64.length / 1024 / 1024).toFixed(1)}MB (${width}px, q${quality})`);
+      return { base64, mediaType: 'image/jpeg' };
+    }
+  }
+
+  // Last resort — very aggressive
+  const tiny = await sharp(buffer)
+    .resize(640, undefined, { fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 50, mozjpeg: true })
+    .toBuffer();
+
+  base64 = tiny.toString('base64');
+  console.log(`  Final compression: ${(base64.length / 1024 / 1024).toFixed(1)}MB (640px, q50)`);
+  return { base64, mediaType: 'image/jpeg' };
+}
 
 // Multer configuration
 const upload = multer({
@@ -107,15 +159,16 @@ app.post('/api/upload', upload.array('documents', 20), async (req, res) => {
         const document = await pdf(pdfBuffer, { scale: 2 });
 
         for await (const image of document) {
-          const base64 = Buffer.from(image).toString('base64');
-          pages.push({ pageNumber, base64, mediaType: 'image/png', sourceFile: file.originalname });
+          const rawBuffer = Buffer.from(image);
+          const compressed = await compressImage(rawBuffer, 'image/png');
+          pages.push({ pageNumber, base64: compressed.base64, mediaType: compressed.mediaType, sourceFile: file.originalname });
           pageNumber++;
         }
       } else {
         const imageBuffer = fs.readFileSync(filePath);
-        const base64 = imageBuffer.toString('base64');
         const mediaType = file.mimetype === 'image/jpg' ? 'image/jpeg' : file.mimetype;
-        pages.push({ pageNumber, base64, mediaType, sourceFile: file.originalname });
+        const compressed = await compressImage(imageBuffer, mediaType);
+        pages.push({ pageNumber, base64: compressed.base64, mediaType: compressed.mediaType, sourceFile: file.originalname });
         pageNumber++;
       }
 
