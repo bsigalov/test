@@ -13,8 +13,18 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Ensure uploads directory exists
-fs.mkdirSync(path.join(__dirname, 'uploads'), { recursive: true });
+// Ensure uploads directory exists (temp only — files are deleted after processing)
+const uploadsDir = path.join(__dirname, 'uploads');
+fs.mkdirSync(uploadsDir, { recursive: true });
+
+// Clean up any leftover files from previous crashes on startup
+const staleFiles = fs.readdirSync(uploadsDir);
+for (const file of staleFiles) {
+  fs.unlinkSync(path.join(uploadsDir, file));
+}
+if (staleFiles.length > 0) {
+  console.log(`Cleaned up ${staleFiles.length} stale file(s) from uploads/`);
+}
 
 // Initialize Anthropic client
 const anthropic = new Anthropic();
@@ -198,102 +208,174 @@ app.post('/api/classify', async (req, res) => {
   }
 });
 
+// Common extraction instructions
+const EXTRACTION_COMMON = `
+IMPORTANT: This document is in Hebrew (עברית). Read all Hebrew text carefully from right to left.
+Transliterate Hebrew names to English/Latin characters where possible.
+For dates, use the format DD.MM.YYYY as printed.
+For fields you cannot read or find, return null.`;
+
 // Data extraction prompts per document type
 const EXTRACTION_PROMPTS = {
-  ID_CARD: `Extract the following fields from this Israeli ID card (Teudat Zehut):
-- id_number (מספר זהות)
-- first_name (שם פרטי)
-- last_name (שם משפחה)
-- date_of_birth (תאריך לידה)
-- date_of_issue (תאריך הנפקה)
-- date_of_expiry (תאריך תפוגה)
-- gender (מין)`,
-  ID_CARD_APPENDIX: `Extract the following fields from this Israeli ID appendix (Sefach / נספח):
-- id_number (מספר זהות)
-- full_name (שם מלא)
-- address (כתובת)
-- city (עיר)
-- marital_status (מצב משפחתי)
-- spouse_name (שם בן/בת זוג)
-- children (list of children names and birth dates if visible)`,
-  PASSPORT: `Extract the following fields from this passport:
+  ID_CARD: `Extract the following fields from this Israeli biometric ID card (תעודת זהות ביומטרית).
+The card has Hebrew text on the front with a photo, and may have English transliteration on the back.
+${EXTRACTION_COMMON}
+
+Fields to extract:
+- id_number: The 9-digit ID number (מספר זהות) — usually at the top
+- first_name: Given name (שם פרטי) — read Hebrew, transliterate to Latin
+- last_name: Family name (שם משפחה) — read Hebrew, transliterate to Latin
+- date_of_birth: (תאריך לידה) — format DD.MM.YYYY
+- date_of_issue: (תאריך הנפקה) — format DD.MM.YYYY
+- date_of_expiry: (תוקף) — format DD.MM.YYYY
+- gender: (מין) — "male"/"female" (זכר/נקבה)
+- place_of_birth: (מקום לידה) if visible`,
+
+  ID_CARD_APPENDIX: `Extract fields from this Israeli ID appendix (ספח תעודת זהות / נספח).
+This is a folded paper document listing personal info, address, family members.
+Text is printed in Hebrew. Look for sections with כתובת (address), מצב אישי (marital status), etc.
+${EXTRACTION_COMMON}
+
+Fields to extract:
+- id_number: 9-digit ID number (מספר זהות)
+- full_name: Full name (שם מלא) — transliterate Hebrew to Latin
+- address: Street and house number (כתובת - רחוב ומספר)
+- city: City name (עיר/ישוב)
+- marital_status: (מצב אישי) — e.g. נשוי=married, רווק=single, גרוש=divorced
+- spouse_name: Spouse name (שם בן/בת זוג) — transliterate to Latin
+- children: Array of children with names and birth dates if visible`,
+
+  PASSPORT: `Extract fields from this passport. May be Israeli (דרכון ישראלי) or international.
+Look for MRZ (machine-readable zone) at the bottom for accurate data.
+${EXTRACTION_COMMON}
+
+Fields to extract:
 - passport_number
 - first_name
 - last_name
 - nationality
-- date_of_birth
-- date_of_issue
-- date_of_expiry
+- date_of_birth (DD.MM.YYYY)
+- date_of_issue (DD.MM.YYYY)
+- date_of_expiry (DD.MM.YYYY)
 - issuing_country`,
-  DRIVERS_LICENSE: `Extract the following fields from this driving license:
-- license_number
-- first_name
-- last_name
-- date_of_birth
-- date_of_issue
-- date_of_expiry
-- license_categories`,
-  VEHICLE_LICENSE: `Extract the following fields from this vehicle license (רישיון רכב):
-- license_plate (מספר רכב)
-- vehicle_type (סוג רכב)
-- manufacturer (יצרן)
-- model (דגם)
-- year (שנת ייצור)
-- owner_name (שם בעלים)
-- owner_id (ת.ז. בעלים)
-- validity_date (תוקף)`,
-  BANK_STATEMENT: `Extract the following fields from this bank statement:
-- bank_name
-- branch_number
-- account_number
-- account_holder_name
-- statement_period (from-to dates)
-- opening_balance
-- closing_balance
-- currency`,
-  SALARY_SLIP: `Extract the following fields from this salary slip (Tlush Sachar):
-- employer_name (שם מעסיק)
-- employee_name (שם עובד)
-- employee_id (ת.ז.)
-- month_year (חודש/שנה)
-- gross_salary (שכר ברוטו)
-- net_salary (שכר נטו)
-- deductions_total (סה"כ ניכויים)`,
-  TAX_DOCUMENT: `Extract the following fields from this tax document:
-- document_type (e.g. Tofes 106, Shuma)
-- tax_year
-- taxpayer_name
-- taxpayer_id
-- total_income
-- total_tax_paid`,
-  UTILITY_BILL: `Extract the following fields from this utility bill:
-- provider_name
-- account_number
-- bill_date
-- bill_period
-- amount_due
-- account_holder_name
-- service_address`,
-  PROOF_OF_ADDRESS: `Extract the following fields from this proof of address document:
-- full_name
-- address
-- city
-- date_issued
-- issuing_authority`,
-  EMPLOYMENT_LETTER: `Extract the following fields from this employment letter:
-- employer_name
-- employee_name
-- employee_id
-- position/role
-- start_date
-- salary (if mentioned)
-- letter_date`,
-  OTHER: `Extract any identifiable fields from this document, including:
-- document_title or type
-- names
-- dates
-- reference numbers
-- any monetary amounts`,
+
+  DRIVERS_LICENSE: `Extract fields from this Israeli driving license (רישיון נהיגה).
+The card has Hebrew text with the driver's photo. Look for license number, personal details, and categories.
+${EXTRACTION_COMMON}
+
+Fields to extract:
+- license_number: (מספר רישיון) — numeric
+- first_name: (שם פרטי) — transliterate Hebrew to Latin
+- last_name: (שם משפחה) — transliterate Hebrew to Latin
+- date_of_birth: (תאריך לידה) — DD.MM.YYYY
+- date_of_issue: (תאריך הנפקה) — DD.MM.YYYY
+- date_of_expiry: (תוקף) — DD.MM.YYYY
+- license_categories: (דרגות) — e.g. A, B, C, D`,
+
+  VEHICLE_LICENSE: `Extract fields from this Israeli vehicle registration certificate (רישיון רכב).
+This is a card/paper with vehicle details in Hebrew. Look for מספר רכב (plate), סוג (type), יצרן (manufacturer).
+${EXTRACTION_COMMON}
+
+Fields to extract:
+- license_plate: Vehicle plate number (מספר רכב) — digits only
+- vehicle_type: (סוג רכב) — e.g. "פרטי נוסעים M1"
+- manufacturer: (יצרן/שם מסחרי) — e.g. פיג'ו, טויוטה, etc.
+- model: (דגם) — model name
+- year: (שנת ייצור) — 4-digit year
+- color: (צבע) if visible
+- owner_name: (שם בעלים) — transliterate Hebrew to Latin
+- owner_id: (ת.ז. בעלים) — 9-digit ID
+- validity_date: (תוקף) — DD/MM/YYYY
+- engine_volume: (נפח מנוע) if visible`,
+
+  BANK_STATEMENT: `Extract fields from this Israeli bank statement (דף חשבון בנק).
+Common Israeli banks: הפועלים (Hapoalim), לאומי (Leumi), דיסקונט (Discount), מזרחי טפחות (Mizrahi Tefahot).
+Look for bank logo, account details header, and balance summary.
+${EXTRACTION_COMMON}
+
+Fields to extract:
+- bank_name: Full bank name in English (e.g. "Bank Hapoalim", "Bank Leumi")
+- branch_number: (סניף) — typically 3 digits
+- account_number: (חשבון) — account number
+- account_holder_name: (שם בעל החשבון) — transliterate to Latin
+- statement_period: From-to dates (תקופה)
+- opening_balance: (יתרת פתיחה) — number with no currency symbol
+- closing_balance: (יתרת סגירה) — number
+- currency: ILS/USD/EUR as applicable`,
+
+  SALARY_SLIP: `Extract fields from this Israeli salary slip (תלוש שכר / תלוש משכורת).
+Look for employer name at top, employee details, and salary breakdown table.
+${EXTRACTION_COMMON}
+
+Fields to extract:
+- employer_name: (שם מעסיק/חברה) — transliterate to Latin
+- employee_name: (שם עובד) — transliterate to Latin
+- employee_id: (ת.ז.) — 9-digit ID
+- month_year: (חודש שכר) — MM/YYYY
+- gross_salary: (שכר ברוטו) — number
+- net_salary: (שכר נטו / לתשלום) — number
+- deductions_total: (סה"כ ניכויים) — number
+- employer_deductions: (הפרשות מעסיק) — number if visible`,
+
+  TAX_DOCUMENT: `Extract fields from this Israeli tax document.
+May be: טופס 106 (annual employer tax report), שומת מס (tax assessment), אישור ניכוי מס (tax deduction cert).
+${EXTRACTION_COMMON}
+
+Fields to extract:
+- document_type: Type name (e.g. "Tofes 106", "Tax Assessment")
+- tax_year: (שנת מס) — 4-digit year
+- taxpayer_name: — transliterate to Latin
+- taxpayer_id: (ת.ז./ח.פ.) — ID number
+- total_income: (הכנסה כוללת/ברוטו שנתי) — number
+- total_tax_paid: (מס שנוכה/מס ששולם) — number`,
+
+  UTILITY_BILL: `Extract fields from this utility bill (חשבון חשמל/מים/גז/ארנונה).
+May be from Israeli utilities: חברת חשמל, מקורות, עיריה (arnona), etc.
+${EXTRACTION_COMMON}
+
+Fields to extract:
+- provider_name: Company/municipality name
+- account_number: (מספר חשבון/מספר לקוח)
+- bill_date: (תאריך חשבון) — DD.MM.YYYY
+- bill_period: (תקופת חיוב)
+- amount_due: (לתשלום) — number
+- account_holder_name: — transliterate to Latin
+- service_address: (כתובת הנכס) — transliterate to Latin`,
+
+  PROOF_OF_ADDRESS: `Extract fields from this proof of address document.
+May be: אישור כתובת from municipality, bank letter, or utility confirmation.
+${EXTRACTION_COMMON}
+
+Fields to extract:
+- full_name: — transliterate to Latin
+- address: Street and number
+- city: City/town name
+- date_issued: DD.MM.YYYY
+- issuing_authority: Who issued it`,
+
+  EMPLOYMENT_LETTER: `Extract fields from this employment letter (אישור העסקה).
+Typically issued by employer on company letterhead confirming employment details.
+${EXTRACTION_COMMON}
+
+Fields to extract:
+- employer_name: Company name — transliterate to Latin
+- employee_name: — transliterate to Latin
+- employee_id: (ת.ז.) — 9-digit ID
+- position: (תפקיד) — job title
+- start_date: (תאריך תחילת העסקה) — DD.MM.YYYY
+- salary: Monthly salary if mentioned — number
+- letter_date: Date of the letter — DD.MM.YYYY`,
+
+  OTHER: `Extract any identifiable fields from this document.
+The document may be in Hebrew (עברית) or English.
+${EXTRACTION_COMMON}
+
+Fields to extract:
+- document_title: What type of document this appears to be
+- names: Any person/company names found — transliterate Hebrew to Latin
+- dates: Any dates found
+- reference_numbers: Any ID/reference/account numbers
+- amounts: Any monetary amounts with currency`,
 };
 
 // POST /api/extract - Extract data from a grouped document's pages
@@ -351,6 +433,72 @@ Do not include any explanation or markdown formatting — just the raw JSON obje
   } catch (error) {
     console.error('Extraction error:', error);
     res.status(500).json({ error: 'Data extraction failed', details: error.message });
+  }
+});
+
+// POST /api/summarize - Generate LLM summary of all documents and extracted data
+app.post('/api/summarize', async (req, res) => {
+  const startTime = Date.now();
+
+  try {
+    const { documents, extractedData } = req.body;
+
+    if (!documents || !documents.length) {
+      return res.status(400).json({ error: 'No documents provided' });
+    }
+
+    // Build a text description of all documents and their extracted data
+    const docSummaries = documents.map((doc, i) => {
+      const data = extractedData[i];
+      const dataStr = data && !data.error
+        ? Object.entries(data).map(([k, v]) => `  ${k}: ${v === null ? 'N/A' : typeof v === 'object' ? JSON.stringify(v) : v}`).join('\n')
+        : '  (no data extracted)';
+      return `Document ${i + 1}: ${doc.type} (${doc.pages.length} page(s), pages: ${doc.pages.map(p => p.page).join(', ')})\n${dataStr}`;
+    }).join('\n\n');
+
+    const summaryPrompt = `You are analyzing the results of an automated loan document classification and data extraction POC (Proof of Concept).
+
+Below are the documents that were uploaded, classified, and had data extracted from them:
+
+${docSummaries}
+
+Please provide a structured analysis with these two sections:
+
+## Product Capability Summary
+Summarize what the system successfully accomplished:
+- How many documents were classified, what types were identified
+- What personal/financial data was extracted from each document type
+- What practical loan processing workflows this enables (e.g. identity verification, income verification, asset verification)
+- Highlight any cross-document insights (e.g. matching names/IDs across documents, income vs. bank balance)
+
+## POC Accuracy & Productivity Analysis
+Evaluate the quality of the extraction results:
+- Which fields were extracted successfully vs. returned null/empty
+- Calculate an overall extraction success rate (fields with values / total fields)
+- Estimate time savings compared to manual data entry (assume ~2 min per document manual vs. automated)
+- Flag any data quality concerns (mismatched formats, incomplete data, potential misreads)
+- Provide a 1-5 rating for: Classification Accuracy, Extraction Completeness, Production Readiness
+
+Keep the response concise but insightful. Use bullet points. Write in English.`;
+
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      messages: [{ role: 'user', content: summaryPrompt }],
+    });
+
+    const summary = response.content[0].text;
+    const processingTime = Date.now() - startTime;
+
+    res.json({
+      summary,
+      processingTime,
+      model: response.model,
+      usage: response.usage,
+    });
+  } catch (error) {
+    console.error('Summary error:', error);
+    res.status(500).json({ error: 'Summary generation failed', details: error.message });
   }
 });
 

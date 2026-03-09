@@ -1,6 +1,18 @@
 // Version and release history
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.6.0';
 const RELEASES = [
+  {
+    version: '1.6.0',
+    date: '2026-03-09T08:00:00Z',
+    title: 'Improved extraction, AI summary, debug copy, server cleanup',
+    changes: [
+      'Enhanced extraction prompts with Hebrew language hints and detailed field descriptions',
+      'AI Analysis Summary — generates product capability demo and POC accuracy report',
+      'Copy button on debug panel to copy all debug info to clipboard',
+      'Server cleanup: temp files deleted after processing, stale files purged on startup',
+      'No documents are persisted on server — all data is transient',
+    ],
+  },
   {
     version: '1.5.0',
     date: '2026-03-09T07:17:36Z',
@@ -104,7 +116,11 @@ const documentsList = document.getElementById('documentsList');
 const extractionSection = document.getElementById('extractionSection');
 const extractionResults = document.getElementById('extractionResults');
 const debugContent = document.getElementById('debugContent');
+const copyDebugBtn = document.getElementById('copyDebugBtn');
 const legendGrid = document.getElementById('legendGrid');
+const summarySection = document.getElementById('summarySection');
+const summarizeBtn = document.getElementById('summarizeBtn');
+const summaryContent = document.getElementById('summaryContent');
 
 // Initialize legend
 function initLegend() {
@@ -171,6 +187,40 @@ function renderDebug() {
     )
     .join('');
 }
+
+// Copy debug info to clipboard
+copyDebugBtn.addEventListener('click', async () => {
+  const text = debugLog
+    .map((entry) => {
+      const data = typeof entry.data === 'string' ? entry.data : JSON.stringify(entry.data, null, 2);
+      return `=== ${entry.label} ===\n${entry.timestamp}\n${data}`;
+    })
+    .join('\n\n');
+
+  try {
+    await navigator.clipboard.writeText(text);
+    copyDebugBtn.textContent = '✅ Copied!';
+    copyDebugBtn.classList.add('copied');
+    setTimeout(() => {
+      copyDebugBtn.textContent = '📋 Copy All';
+      copyDebugBtn.classList.remove('copied');
+    }, 2000);
+  } catch {
+    // Fallback for non-HTTPS
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+    copyDebugBtn.textContent = '✅ Copied!';
+    copyDebugBtn.classList.add('copied');
+    setTimeout(() => {
+      copyDebugBtn.textContent = '📋 Copy All';
+      copyDebugBtn.classList.remove('copied');
+    }, 2000);
+  }
+});
 
 // Drag and drop handling
 dropZone.addEventListener('dragover', (e) => {
@@ -494,6 +544,8 @@ extractBtn.addEventListener('click', async () => {
   renderExtractionResults();
   hideProgress();
   extractBtn.disabled = false;
+  summarizeBtn.disabled = false;
+  summarySection.classList.add('visible');
   showStatus(`Extracted data from ${completed} of ${totalDocs} documents`);
 });
 
@@ -563,6 +615,76 @@ function renderExtractionResults() {
     })
     .join('');
 }
+
+// Simple markdown to HTML converter
+function markdownToHtml(md) {
+  return md
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^- \*\*(.+?)\*\*:?\s*/gm, '<li><strong>$1</strong> ')
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/(<li>.*<\/li>\n?)+/g, (m) => `<ul>${m}</ul>`)
+    .replace(/\n{2,}/g, '\n')
+    .split('\n')
+    .map((line) => {
+      if (line.startsWith('<h2>') || line.startsWith('<ul>') || line.startsWith('<li>')) return line;
+      if (line.trim() === '') return '';
+      return `<p>${line}</p>`;
+    })
+    .join('\n');
+}
+
+// Generate AI summary
+summarizeBtn.addEventListener('click', async () => {
+  summarizeBtn.disabled = true;
+  showProgress('Generating AI analysis summary...');
+
+  addDebug('Summary Started', { timestamp: new Date().toISOString() });
+
+  try {
+    const startTime = Date.now();
+    const response = await fetch('/api/summarize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        documents: groupedDocuments.map((doc) => ({
+          type: doc.type,
+          pages: doc.pages,
+        })),
+        extractedData: extractedDataMap,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.details || error.error || 'Summary failed');
+    }
+
+    const data = await response.json();
+    const totalTime = Date.now() - startTime;
+
+    summaryContent.innerHTML = markdownToHtml(data.summary);
+    summaryContent.classList.add('visible');
+
+    addDebug('Summary Complete', {
+      model: data.model,
+      usage: data.usage,
+      processingTime: data.processingTime + 'ms',
+      totalTime: totalTime + 'ms',
+    });
+
+    addDebug('Raw Summary', data.summary);
+
+    hideProgress();
+    summarizeBtn.disabled = false;
+    showStatus('AI summary generated successfully');
+  } catch (error) {
+    hideProgress();
+    summarizeBtn.disabled = false;
+    showStatus(error.message, 'error');
+    addDebug('Summary Error', { error: error.message });
+  }
+});
 
 // Save documents
 saveBtn.addEventListener('click', async () => {
