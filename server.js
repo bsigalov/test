@@ -67,6 +67,11 @@ Rules:
 - confidence: "high", "medium", or "low"
 - Detect document boundaries by visual layout changes`;
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // POST /api/upload - Accept PDF or image, convert to base64 page images
 app.post('/api/upload', upload.single('document'), async (req, res) => {
   const startTime = Date.now();

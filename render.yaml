@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: loan-document-classifier
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false  # must be set manually in Render dashboard
+      - key: NODE_ENV
+        value: production
