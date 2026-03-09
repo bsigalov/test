@@ -42,6 +42,33 @@ header {
   margin-bottom: 32px;
 }
 
+/* Instructions Banner */
+.instructions-banner {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 24px;
+  margin-bottom: 28px;
+  direction: rtl;
+  text-align: right;
+  line-height: 1.8;
+}
+
+.instructions-banner p {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.instructions-banner p:last-child {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.instructions-banner strong {
+  color: var(--amber);
+}
+
 header h1 {
   font-size: 28px;
   font-weight: 700;
