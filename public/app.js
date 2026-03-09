@@ -157,7 +157,7 @@ async function handleFile(file) {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Upload failed');
+      throw new Error(error.details || error.error || 'Upload failed');
     }
 
     const data = await response.json();
@@ -251,13 +251,13 @@ classifyBtn.addEventListener('click', async () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        pages: uploadedPages.map((p) => ({ base64: p.base64 })),
+        pages: uploadedPages.map((p) => ({ base64: p.base64, mediaType: p.mediaType })),
       }),
     });
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Classification failed');
+      throw new Error(error.details || error.error || 'Classification failed');
     }
 
     const data = await response.json();
@@ -375,7 +375,7 @@ saveBtn.addEventListener('click', async () => {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Save failed');
+      throw new Error(error.details || error.error || 'Save failed');
     }
 
     const data = await response.json();

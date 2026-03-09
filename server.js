@@ -91,14 +91,15 @@ app.post('/api/upload', upload.single('document'), async (req, res) => {
       let pageNumber = 1;
       for await (const image of document) {
         const base64 = Buffer.from(image).toString('base64');
-        pages.push({ pageNumber, base64 });
+        pages.push({ pageNumber, base64, mediaType: 'image/png' });
         pageNumber++;
       }
     } else {
-      // Image file
+      // Image file — detect media type from mimetype
       const imageBuffer = fs.readFileSync(filePath);
       const base64 = imageBuffer.toString('base64');
-      pages.push({ pageNumber: 1, base64 });
+      const mediaType = req.file.mimetype === 'image/jpg' ? 'image/jpeg' : req.file.mimetype;
+      pages.push({ pageNumber: 1, base64, mediaType });
     }
 
     // Clean up temp file
@@ -140,7 +141,7 @@ app.post('/api/classify', async (req, res) => {
       type: 'image',
       source: {
         type: 'base64',
-        media_type: 'image/png',
+        media_type: page.mediaType || 'image/png',
         data: page.base64 || page,
       },
     }));
