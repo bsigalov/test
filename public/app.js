@@ -18,6 +18,7 @@ const DOCUMENT_TYPES = {
 let uploadedPages = [];
 let classifications = [];
 let groupedDocuments = [];
+let extractedDataMap = {};
 const debugLog = [];
 
 // DOM elements
@@ -28,6 +29,7 @@ const fileName = document.getElementById('fileName');
 const fileSize = document.getElementById('fileSize');
 const actions = document.getElementById('actions');
 const classifyBtn = document.getElementById('classifyBtn');
+const extractBtn = document.getElementById('extractBtn');
 const saveBtn = document.getElementById('saveBtn');
 const progress = document.getElementById('progress');
 const progressText = document.getElementById('progressText');
@@ -36,6 +38,8 @@ const pagesSection = document.getElementById('pagesSection');
 const pagesGrid = document.getElementById('pagesGrid');
 const documentsSection = document.getElementById('documentsSection');
 const documentsList = document.getElementById('documentsList');
+const extractionSection = document.getElementById('extractionSection');
+const extractionResults = document.getElementById('extractionResults');
 const debugContent = document.getElementById('debugContent');
 const legendGrid = document.getElementById('legendGrid');
 
@@ -118,8 +122,8 @@ dropZone.addEventListener('dragleave', () => {
 dropZone.addEventListener('drop', (e) => {
   e.preventDefault();
   dropZone.classList.remove('dragover');
-  const file = e.dataTransfer.files[0];
-  if (file) handleFile(file);
+  const files = Array.from(e.dataTransfer.files);
+  if (files.length > 0) handleFiles(files);
 });
 
 dropZone.addEventListener('click', () => {
@@ -127,28 +131,30 @@ dropZone.addEventListener('click', () => {
 });
 
 fileInput.addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  if (file) handleFile(file);
+  const files = Array.from(e.target.files);
+  if (files.length > 0) handleFiles(files);
 });
 
-// Handle file upload
-async function handleFile(file) {
-  // Show file info
-  fileName.textContent = file.name;
-  fileSize.textContent = formatSize(file.size);
+// Handle multiple file upload
+async function handleFiles(files) {
+  const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+  const names = files.map((f) => f.name).join(', ');
+
+  fileName.textContent = files.length === 1 ? files[0].name : `${files.length} files: ${names}`;
+  fileSize.textContent = formatSize(totalSize);
   fileInfo.classList.add('visible');
 
-  addDebug('File Selected', {
-    name: file.name,
-    size: formatSize(file.size),
-    type: file.type,
+  addDebug('Files Selected', {
+    count: files.length,
+    files: files.map((f) => ({ name: f.name, size: formatSize(f.size), type: f.type })),
   });
 
-  // Upload to server
-  showProgress('Uploading and converting pages...');
+  showProgress(`Uploading ${files.length} file(s) and converting pages...`);
 
   const formData = new FormData();
-  formData.append('document', file);
+  for (const file of files) {
+    formData.append('documents', file);
+  }
 
   try {
     const startTime = Date.now();
@@ -169,22 +175,19 @@ async function handleFile(file) {
 
     addDebug('Upload Complete', {
       pageCount: data.pageCount,
-      fileName: data.fileName,
-      fileSize: formatSize(data.fileSize),
-      mimeType: data.mimeType,
+      fileCount: data.fileCount,
+      files: data.files,
       serverProcessingTime: data.processingTime + 'ms',
       totalTime: uploadTime + 'ms',
     });
 
-    // Render page thumbnails
     renderPages();
 
-    // Enable classify button
     actions.style.display = 'flex';
     classifyBtn.disabled = false;
 
     hideProgress();
-    showStatus(`Successfully processed ${data.pageCount} page(s)`);
+    showStatus(`Successfully processed ${data.fileCount} file(s) into ${data.pageCount} page(s)`);
   } catch (error) {
     hideProgress();
     showStatus(error.message, 'error');
@@ -199,9 +202,9 @@ function renderPages() {
     .map(
       (page) => `
     <div class="page-card" id="page-${page.pageNumber}">
-      <img src="data:image/png;base64,${page.base64}" alt="Page ${page.pageNumber}">
+      <img src="data:${page.mediaType || 'image/png'};base64,${page.base64}" alt="Page ${page.pageNumber}">
       <div class="page-info">
-        <div class="page-number">Page ${page.pageNumber}</div>
+        <div class="page-number">Page ${page.pageNumber}${page.sourceFile ? ' — ' + page.sourceFile : ''}</div>
       </div>
     </div>
   `
@@ -221,9 +224,9 @@ function renderClassifiedPages() {
       return `
       <div class="page-card" id="page-${page.pageNumber}">
         ${classification.isFirstPage ? '<div class="new-doc-badge">NEW DOC</div>' : ''}
-        <img src="data:image/png;base64,${page.base64}" alt="Page ${page.pageNumber}">
+        <img src="data:${page.mediaType || 'image/png'};base64,${page.base64}" alt="Page ${page.pageNumber}">
         <div class="page-info">
-          <div class="page-number">Page ${page.pageNumber}</div>
+          <div class="page-number">Page ${page.pageNumber}${page.sourceFile ? ' — ' + page.sourceFile : ''}</div>
           <span class="badge badge-${classification.type}">
             ${docType.icon} ${classification.type}
           </span>
@@ -277,10 +280,8 @@ classifyBtn.addEventListener('click', async () => {
 
     addDebug('Raw API Response', data.rawResponse);
 
-    // Render classified pages
     renderClassifiedPages();
 
-    // Group documents
     groupedDocuments = groupIntoDocuments(classifications);
 
     addDebug('Document Grouping', {
@@ -292,11 +293,11 @@ classifyBtn.addEventListener('click', async () => {
       })),
     });
 
-    // Render grouped documents
     renderDocuments();
 
     hideProgress();
     classifyBtn.disabled = false;
+    extractBtn.disabled = false;
     saveBtn.disabled = false;
     showStatus(`Classified ${classifications.length} pages into ${groupedDocuments.length} documents`);
   } catch (error) {
@@ -323,7 +324,6 @@ function groupIntoDocuments(classificationList) {
     } else if (currentDoc) {
       currentDoc.pages.push(page);
     } else {
-      // First page but isFirstPage is false - treat as new doc
       currentDoc = {
         type: page.type,
         pages: [page],
@@ -359,6 +359,144 @@ function renderDocuments() {
         </div>
       </div>
     `;
+    })
+    .join('');
+}
+
+// Extract data from all grouped documents
+extractBtn.addEventListener('click', async () => {
+  extractBtn.disabled = true;
+  extractedDataMap = {};
+  extractionSection.classList.add('visible');
+  extractionResults.innerHTML = '';
+
+  const totalDocs = groupedDocuments.length;
+  let completed = 0;
+
+  addDebug('Extraction Started', {
+    documentCount: totalDocs,
+    timestamp: new Date().toISOString(),
+  });
+
+  showProgress(`Extracting data from document 1 of ${totalDocs}...`);
+
+  for (let i = 0; i < groupedDocuments.length; i++) {
+    const doc = groupedDocuments[i];
+    const docType = DOCUMENT_TYPES[doc.type] || DOCUMENT_TYPES.OTHER;
+
+    progressText.textContent = `Extracting data from document ${i + 1} of ${totalDocs} (${docType.label})...`;
+
+    try {
+      const pageImages = doc.pages.map((p) => {
+        const uploaded = uploadedPages.find((up) => up.pageNumber === p.page);
+        return { base64: uploaded.base64, mediaType: uploaded.mediaType };
+      });
+
+      const startTime = Date.now();
+      const response = await fetch('/api/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          documentType: doc.type,
+          pages: pageImages,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.details || error.error || 'Extraction failed');
+      }
+
+      const data = await response.json();
+      const totalTime = Date.now() - startTime;
+
+      extractedDataMap[i] = data.extractedData;
+
+      addDebug(`Extraction: ${doc.type} (Doc ${i + 1})`, {
+        model: data.model,
+        usage: data.usage,
+        processingTime: data.processingTime + 'ms',
+        totalTime: totalTime + 'ms',
+        extractedData: data.extractedData,
+      });
+
+      completed++;
+    } catch (error) {
+      extractedDataMap[i] = { error: error.message };
+      addDebug(`Extraction Error: ${doc.type} (Doc ${i + 1})`, { error: error.message });
+      completed++;
+    }
+  }
+
+  renderExtractionResults();
+  hideProgress();
+  extractBtn.disabled = false;
+  showStatus(`Extracted data from ${completed} of ${totalDocs} documents`);
+});
+
+// Render extraction results
+function renderExtractionResults() {
+  extractionResults.innerHTML = groupedDocuments
+    .map((doc, index) => {
+      const docType = DOCUMENT_TYPES[doc.type] || DOCUMENT_TYPES.OTHER;
+      const data = extractedDataMap[index];
+      const borderColor = docType.color;
+
+      if (!data) {
+        return `
+        <div class="extraction-card" style="border-left-color: ${borderColor}">
+          <div class="extraction-header">
+            <span>${docType.icon}</span>
+            <strong>${doc.type}</strong> — ${docType.label}
+          </div>
+          <div class="extraction-body">
+            <span style="color: var(--text-muted);">Pending...</span>
+          </div>
+        </div>`;
+      }
+
+      if (data.error) {
+        return `
+        <div class="extraction-card" style="border-left-color: var(--error)">
+          <div class="extraction-header">
+            <span>${docType.icon}</span>
+            <strong>${doc.type}</strong> — ${docType.label}
+          </div>
+          <div class="extraction-body">
+            <span style="color: var(--error);">Error: ${data.error}</span>
+          </div>
+        </div>`;
+      }
+
+      const fieldsHtml = Object.entries(data)
+        .map(([key, value]) => {
+          const displayValue =
+            value === null
+              ? '<span style="color: var(--text-muted)">—</span>'
+              : typeof value === 'object'
+                ? `<pre style="margin:0;font-size:12px;">${JSON.stringify(value, null, 2)}</pre>`
+                : `<span>${value}</span>`;
+          return `
+          <div class="extraction-field">
+            <div class="field-key">${key}</div>
+            <div class="field-value">${displayValue}</div>
+          </div>`;
+        })
+        .join('');
+
+      return `
+      <div class="extraction-card" style="border-left-color: ${borderColor}">
+        <div class="extraction-header">
+          <span>${docType.icon}</span>
+          <strong>${doc.type}</strong> — ${docType.label}
+          <span style="color: var(--text-muted); font-size: 12px; margin-left: auto;">
+            Pages: ${doc.pages.map((p) => p.page).join(', ')}
+          </span>
+        </div>
+        <div class="extraction-body">
+          ${fieldsHtml}
+        </div>
+      </div>`;
     })
     .join('');
 }

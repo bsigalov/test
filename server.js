@@ -74,56 +74,64 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// POST /api/upload - Accept PDF or image, convert to base64 page images
-app.post('/api/upload', upload.single('document'), async (req, res) => {
+// POST /api/upload - Accept multiple PDF or image files, convert to base64 page images
+app.post('/api/upload', upload.array('documents', 20), async (req, res) => {
   const startTime = Date.now();
+  const filesToClean = [];
 
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'No files uploaded' });
     }
 
-    const filePath = req.file.path;
     const pages = [];
+    let pageNumber = 1;
+    const fileDetails = [];
 
-    if (req.file.mimetype === 'application/pdf') {
-      const pdfBuffer = fs.readFileSync(filePath);
-      const document = await pdf(pdfBuffer, { scale: 2 });
+    for (const file of req.files) {
+      filesToClean.push(file.path);
+      const filePath = file.path;
 
-      let pageNumber = 1;
-      for await (const image of document) {
-        const base64 = Buffer.from(image).toString('base64');
-        pages.push({ pageNumber, base64, mediaType: 'image/png' });
+      if (file.mimetype === 'application/pdf') {
+        const pdfBuffer = fs.readFileSync(filePath);
+        const document = await pdf(pdfBuffer, { scale: 2 });
+
+        for await (const image of document) {
+          const base64 = Buffer.from(image).toString('base64');
+          pages.push({ pageNumber, base64, mediaType: 'image/png', sourceFile: file.originalname });
+          pageNumber++;
+        }
+      } else {
+        const imageBuffer = fs.readFileSync(filePath);
+        const base64 = imageBuffer.toString('base64');
+        const mediaType = file.mimetype === 'image/jpg' ? 'image/jpeg' : file.mimetype;
+        pages.push({ pageNumber, base64, mediaType, sourceFile: file.originalname });
         pageNumber++;
       }
-    } else {
-      // Image file — detect media type from mimetype
-      const imageBuffer = fs.readFileSync(filePath);
-      const base64 = imageBuffer.toString('base64');
-      const mediaType = req.file.mimetype === 'image/jpg' ? 'image/jpeg' : req.file.mimetype;
-      pages.push({ pageNumber: 1, base64, mediaType });
+
+      fileDetails.push({ name: file.originalname, size: file.size, type: file.mimetype });
     }
 
-    // Clean up temp file
-    fs.unlinkSync(filePath);
+    // Clean up temp files
+    for (const fp of filesToClean) {
+      if (fs.existsSync(fp)) fs.unlinkSync(fp);
+    }
 
     const processingTime = Date.now() - startTime;
 
     res.json({
       pages,
       pageCount: pages.length,
-      fileName: req.file.originalname,
-      fileSize: req.file.size,
-      mimeType: req.file.mimetype,
+      fileCount: req.files.length,
+      files: fileDetails,
       processingTime,
     });
   } catch (error) {
-    // Clean up temp file on error
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
+    for (const fp of filesToClean) {
+      if (fs.existsSync(fp)) fs.unlinkSync(fp);
     }
     console.error('Upload error:', error);
-    res.status(500).json({ error: 'Failed to process file', details: error.message });
+    res.status(500).json({ error: 'Failed to process files', details: error.message });
   }
 });
 
@@ -187,6 +195,162 @@ app.post('/api/classify', async (req, res) => {
   } catch (error) {
     console.error('Classification error:', error);
     res.status(500).json({ error: 'Classification failed', details: error.message });
+  }
+});
+
+// Data extraction prompts per document type
+const EXTRACTION_PROMPTS = {
+  ID_CARD: `Extract the following fields from this Israeli ID card (Teudat Zehut):
+- id_number (מספר זהות)
+- first_name (שם פרטי)
+- last_name (שם משפחה)
+- date_of_birth (תאריך לידה)
+- date_of_issue (תאריך הנפקה)
+- date_of_expiry (תאריך תפוגה)
+- gender (מין)`,
+  ID_CARD_APPENDIX: `Extract the following fields from this Israeli ID appendix (Sefach / נספח):
+- id_number (מספר זהות)
+- full_name (שם מלא)
+- address (כתובת)
+- city (עיר)
+- marital_status (מצב משפחתי)
+- spouse_name (שם בן/בת זוג)
+- children (list of children names and birth dates if visible)`,
+  PASSPORT: `Extract the following fields from this passport:
+- passport_number
+- first_name
+- last_name
+- nationality
+- date_of_birth
+- date_of_issue
+- date_of_expiry
+- issuing_country`,
+  DRIVERS_LICENSE: `Extract the following fields from this driving license:
+- license_number
+- first_name
+- last_name
+- date_of_birth
+- date_of_issue
+- date_of_expiry
+- license_categories`,
+  VEHICLE_LICENSE: `Extract the following fields from this vehicle license (רישיון רכב):
+- license_plate (מספר רכב)
+- vehicle_type (סוג רכב)
+- manufacturer (יצרן)
+- model (דגם)
+- year (שנת ייצור)
+- owner_name (שם בעלים)
+- owner_id (ת.ז. בעלים)
+- validity_date (תוקף)`,
+  BANK_STATEMENT: `Extract the following fields from this bank statement:
+- bank_name
+- branch_number
+- account_number
+- account_holder_name
+- statement_period (from-to dates)
+- opening_balance
+- closing_balance
+- currency`,
+  SALARY_SLIP: `Extract the following fields from this salary slip (Tlush Sachar):
+- employer_name (שם מעסיק)
+- employee_name (שם עובד)
+- employee_id (ת.ז.)
+- month_year (חודש/שנה)
+- gross_salary (שכר ברוטו)
+- net_salary (שכר נטו)
+- deductions_total (סה"כ ניכויים)`,
+  TAX_DOCUMENT: `Extract the following fields from this tax document:
+- document_type (e.g. Tofes 106, Shuma)
+- tax_year
+- taxpayer_name
+- taxpayer_id
+- total_income
+- total_tax_paid`,
+  UTILITY_BILL: `Extract the following fields from this utility bill:
+- provider_name
+- account_number
+- bill_date
+- bill_period
+- amount_due
+- account_holder_name
+- service_address`,
+  PROOF_OF_ADDRESS: `Extract the following fields from this proof of address document:
+- full_name
+- address
+- city
+- date_issued
+- issuing_authority`,
+  EMPLOYMENT_LETTER: `Extract the following fields from this employment letter:
+- employer_name
+- employee_name
+- employee_id
+- position/role
+- start_date
+- salary (if mentioned)
+- letter_date`,
+  OTHER: `Extract any identifiable fields from this document, including:
+- document_title or type
+- names
+- dates
+- reference numbers
+- any monetary amounts`,
+};
+
+// POST /api/extract - Extract data from a grouped document's pages
+app.post('/api/extract', async (req, res) => {
+  const startTime = Date.now();
+
+  try {
+    const { documentType, pages } = req.body;
+
+    if (!pages || !pages.length) {
+      return res.status(400).json({ error: 'No pages provided' });
+    }
+
+    const extractionPrompt = EXTRACTION_PROMPTS[documentType] || EXTRACTION_PROMPTS.OTHER;
+
+    const content = pages.map((page) => ({
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: page.mediaType || 'image/png',
+        data: page.base64,
+      },
+    }));
+
+    content.push({
+      type: 'text',
+      text: `${extractionPrompt}
+
+Return ONLY a JSON object with the extracted fields. Use null for fields you cannot read or find.
+Do not include any explanation or markdown formatting — just the raw JSON object.`,
+    });
+
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      messages: [{ role: 'user', content }],
+    });
+
+    const rawText = response.content[0].text;
+    const jsonText = rawText
+      .replace(/^```json\s*\n?/, '')
+      .replace(/\n?```\s*$/, '')
+      .trim();
+
+    const extractedData = JSON.parse(jsonText);
+    const processingTime = Date.now() - startTime;
+
+    res.json({
+      extractedData,
+      rawResponse: rawText,
+      processingTime,
+      model: response.model,
+      usage: response.usage,
+    });
+  } catch (error) {
+    console.error('Extraction error:', error);
+    res.status(500).json({ error: 'Data extraction failed', details: error.message });
   }
 });
 
