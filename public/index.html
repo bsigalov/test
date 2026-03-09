@@ -11,7 +11,19 @@
     <header>
       <h1>Loan Document Classifier</h1>
       <p>Upload a PDF with scanned loan documents for automatic classification and splitting</p>
+      <button class="version-badge" id="versionBadge" title="Click for release notes"></button>
     </header>
+
+    <!-- Release Notes Modal -->
+    <div class="modal-overlay" id="releaseModal">
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Release Notes</h2>
+          <button class="modal-close" id="modalClose">&times;</button>
+        </div>
+        <div class="modal-body" id="releaseNotesContent"></div>
+      </div>
+    </div>
 
     <!-- Upload Section -->
     <section class="upload-section">
