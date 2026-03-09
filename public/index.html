@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="he" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Loan Document Classifier</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Loan Document Classifier</h1>
+      <p>Upload a PDF with scanned loan documents for automatic classification and splitting</p>
+    </header>
+
+    <!-- Upload Section -->
+    <section class="upload-section">
+      <div class="drop-zone" id="dropZone">
+        <div class="icon">📄</div>
+        <h3>Drop your PDF or image here</h3>
+        <p>or click to browse files</p>
+        <p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
+          Supports: PDF, PNG, JPEG, WebP (max 50MB)
+        </p>
+      </div>
+      <input type="file" class="file-input" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.webp">
+      <div class="file-info" id="fileInfo">
+        <span class="file-name" id="fileName"></span>
+        <span class="file-size" id="fileSize"></span>
+      </div>
+    </section>
+
+    <!-- Actions -->
+    <div class="actions" id="actions" style="display:none;">
+      <button class="btn btn-primary" id="classifyBtn" disabled>
+        🔍 Classify Documents
+      </button>
+      <button class="btn btn-secondary" id="saveBtn" disabled>
+        💾 Save Documents
+      </button>
+    </div>
+
+    <!-- Progress -->
+    <div class="progress-section" id="progress">
+      <div class="spinner"></div>
+      <div class="progress-text" id="progressText">Processing...</div>
+    </div>
+
+    <!-- Status Messages -->
+    <div class="status-message" id="statusMessage"></div>
+
+    <!-- Pages Grid -->
+    <section class="pages-section" id="pagesSection">
+      <h2 class="section-title">Page Classification Results</h2>
+      <div class="pages-grid" id="pagesGrid"></div>
+    </section>
+
+    <!-- Grouped Documents -->
+    <section class="documents-section" id="documentsSection">
+      <h2 class="section-title">Grouped Documents</h2>
+      <div id="documentsList"></div>
+    </section>
+
+    <!-- Debug Panel -->
+    <section class="debug-section">
+      <details>
+        <summary>🔧 Debug Information</summary>
+        <div class="debug-content" id="debugContent">
+          <p style="color: var(--text-muted); font-size: 13px;">
+            Debug information will appear here after processing.
+          </p>
+        </div>
+      </details>
+    </section>
+
+    <!-- Legend -->
+    <section class="legend-section">
+      <h3 class="legend-title">Document Types</h3>
+      <div class="legend-grid" id="legendGrid"></div>
+    </section>
+  </div>
+
+  <script src="app.js" defer></script>
+</body>
+</html>

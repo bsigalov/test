@@ -1,0 +1,54 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, claude/*]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [20]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check server starts
+        run: |
+          timeout 5 node server.js &
+          sleep 2
+          curl -f http://localhost:3000/health || exit 1
+          kill %1 || true
+        env:
+          ANTHROPIC_API_KEY: sk-test-placeholder
+
+  docker:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t document-classifier-poc .
+
+      - name: Verify Docker image runs
+        run: |
+          docker run -d --name test-app -p 3000:3000 -e ANTHROPIC_API_KEY=sk-test-placeholder document-classifier-poc
+          sleep 3
+          curl -f http://localhost:3000/health || exit 1
+          docker stop test-app
