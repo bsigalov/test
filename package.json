@@ -1,0 +1,17 @@
+{
+  "name": "document-classifier-poc",
+  "version": "1.0.0",
+  "description": "Loan Document Classifier POC using Claude Vision API",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1",
+    "pdf-to-img": "^4.1.0"
+  }
+}
