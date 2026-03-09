@@ -1,6 +1,18 @@
 {
-  "version": "1.7.0",
+  "version": "1.8.0",
   "releases": [
+    {
+      "version": "1.8.0",
+      "date": "2026-03-09T07:50:58+00:00",
+      "title": "Auto-generate release notes from git log via build script",
+      "changes": [
+        "Added scripts/generate-releases.js: reads git history, extracts",
+        "Frontend now fetches releases.json at startup instead of hardcoded array",
+        "npm run releases / npm run build regenerates the file",
+        "Committed releases.json so Docker/production serves it without git"
+      ],
+      "hash": "0a7459b"
+    },
     {
       "version": "1.7.0",
       "date": "2026-03-09T07:46:25+00:00",
