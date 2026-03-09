@@ -1,3 +1,66 @@
+// Version and release history
+const APP_VERSION = '1.5.0';
+const RELEASES = [
+  {
+    version: '1.5.0',
+    date: '2026-03-09T07:17:36Z',
+    title: 'Multi-file upload and data extraction',
+    changes: [
+      'Upload multiple files at once (up to 20) via drag-and-drop or file picker',
+      'New "Extract Data" button — extracts structured fields from each classified document',
+      'Per-document-type extraction prompts (ID fields, bank balances, salary amounts, etc.)',
+      'Extraction results displayed as field/value cards with debug logging',
+      'Source filename shown per page thumbnail',
+    ],
+  },
+  {
+    version: '1.4.0',
+    date: '2026-03-09T07:07:56Z',
+    title: 'ID card appendix and vehicle license support',
+    changes: [
+      'Added ID_CARD_APPENDIX type (נספח לתעודת זהות) — folded paper Sefach',
+      'Added VEHICLE_LICENSE type (רישיון רכב) — vehicle registration certificate',
+      'Updated classification prompt with clearer descriptions for Claude',
+      'New badge colors and Hebrew labels for both types',
+    ],
+  },
+  {
+    version: '1.3.0',
+    date: '2026-03-09T06:59:39Z',
+    title: 'Fix classification for JPEG uploads',
+    changes: [
+      'Fixed media_type sent to Claude API — was hardcoded to PNG, now uses actual file type',
+      'JPEG, PNG, and WebP images now classified correctly',
+      'Detailed error messages surfaced in UI instead of generic "Classification failed"',
+    ],
+  },
+  {
+    version: '1.2.0',
+    date: '2026-03-09T06:46:57Z',
+    title: 'CI/CD pipeline and production deployment',
+    changes: [
+      'GitHub Actions CI pipeline — build validation and Docker image checks',
+      'Dockerfile with native dependencies for pdf-to-img canvas support',
+      'Render deployment config (render.yaml) for one-click deploy',
+      'Health check endpoint at GET /health',
+    ],
+  },
+  {
+    version: '1.0.0',
+    date: '2026-03-09T06:40:49Z',
+    title: 'Initial release — Loan Document Classifier POC',
+    changes: [
+      'Express backend with PDF-to-image conversion via pdf-to-img',
+      'Claude Vision API integration for document classification',
+      'Dark-themed frontend with drag-and-drop upload',
+      'Color-coded classification badges with confidence levels',
+      'Document grouping by detected boundaries (isFirstPage)',
+      'Collapsible debug panel with timestamps and raw API responses',
+      'Hebrew labels and emoji icons for 10 document types',
+    ],
+  },
+];
+
 // Document type definitions with Hebrew labels
 const DOCUMENT_TYPES = {
   ID_CARD: { label: 'תעודת זהות', icon: '🪪', color: '#3B82F6' },
@@ -536,5 +599,59 @@ saveBtn.addEventListener('click', async () => {
   }
 });
 
+// Version badge and release notes modal
+const versionBadge = document.getElementById('versionBadge');
+const releaseModal = document.getElementById('releaseModal');
+const modalClose = document.getElementById('modalClose');
+const releaseNotesContent = document.getElementById('releaseNotesContent');
+
+function initVersionBadge() {
+  versionBadge.textContent = `v${APP_VERSION}`;
+}
+
+function formatReleaseDate(isoDate) {
+  const d = new Date(isoDate);
+  return d.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function renderReleaseNotes() {
+  releaseNotesContent.innerHTML = RELEASES.map(
+    (release) => `
+    <div class="release-entry">
+      <div class="release-version">
+        <span class="tag">v${release.version}</span>
+        <span class="date">${formatReleaseDate(release.date)}</span>
+      </div>
+      <div class="release-title">${release.title}</div>
+      <ul class="release-changes">
+        ${release.changes.map((c) => `<li>${c}</li>`).join('')}
+      </ul>
+    </div>
+  `
+  ).join('');
+}
+
+versionBadge.addEventListener('click', () => {
+  renderReleaseNotes();
+  releaseModal.classList.add('visible');
+});
+
+modalClose.addEventListener('click', () => {
+  releaseModal.classList.remove('visible');
+});
+
+releaseModal.addEventListener('click', (e) => {
+  if (e.target === releaseModal) {
+    releaseModal.classList.remove('visible');
+  }
+});
+
 // Initialize
 initLegend();
+initVersionBadge();
