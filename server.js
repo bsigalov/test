@@ -43,9 +43,11 @@ const upload = multer({
 const CLASSIFICATION_PROMPT = `Analyze these scanned document pages from a loan application.
 
 For each page, identify the document type from this list:
-- ID_CARD (Israeli Teudat Zehut)
+- ID_CARD (Israeli Teudat Zehut - main biometric card)
+- ID_CARD_APPENDIX (Sefach / נספח לתעודת זהות - the folded paper appendix that lists family members and address)
 - PASSPORT
-- DRIVERS_LICENSE
+- DRIVERS_LICENSE (רישיון נהיגה - driving license)
+- VEHICLE_LICENSE (רישיון רכב - vehicle registration / ownership certificate)
 - BANK_STATEMENT
 - SALARY_SLIP (Tlush Sachar)
 - TAX_DOCUMENT (Tofes 106, Shuma, etc.)

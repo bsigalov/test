@@ -1,8 +1,10 @@
 // Document type definitions with Hebrew labels
 const DOCUMENT_TYPES = {
   ID_CARD: { label: 'תעודת זהות', icon: '🪪', color: '#3B82F6' },
+  ID_CARD_APPENDIX: { label: 'נספח לתעודת זהות', icon: '📑', color: '#60A5FA' },
   PASSPORT: { label: 'דרכון', icon: '📘', color: '#8B5CF6' },
   DRIVERS_LICENSE: { label: 'רישיון נהיגה', icon: '🚗', color: '#EC4899' },
+  VEHICLE_LICENSE: { label: 'רישיון רכב', icon: '🚙', color: '#F472B6' },
   BANK_STATEMENT: { label: 'דף חשבון בנק', icon: '🏦', color: '#10B981' },
   SALARY_SLIP: { label: 'תלוש שכר', icon: '💰', color: '#F59E0B' },
   TAX_DOCUMENT: { label: 'מסמך מס', icon: '📋', color: '#EF4444' },

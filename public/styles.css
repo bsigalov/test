@@ -277,8 +277,10 @@ header p {
 
 /* Document type colors */
 .badge-ID_CARD { background: #3B82F6; }
+.badge-ID_CARD_APPENDIX { background: #60A5FA; }
 .badge-PASSPORT { background: #8B5CF6; }
 .badge-DRIVERS_LICENSE { background: #EC4899; }
+.badge-VEHICLE_LICENSE { background: #F472B6; }
 .badge-BANK_STATEMENT { background: #10B981; }
 .badge-SALARY_SLIP { background: #F59E0B; color: #000; }
 .badge-TAX_DOCUMENT { background: #EF4444; }
