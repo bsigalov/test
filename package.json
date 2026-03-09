@@ -5,6 +5,9 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
+    "releases": "node scripts/generate-releases.js",
+    "prebuild": "npm run releases",
+    "build": "echo 'Build complete'",
     "start": "node server.js"
   },
   "dependencies": {
