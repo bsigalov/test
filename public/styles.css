@@ -547,11 +547,99 @@ header p {
   color: var(--text-secondary);
 }
 
+/* Summary Section */
+.summary-section {
+  display: none;
+  margin-bottom: 32px;
+}
+
+.summary-section.visible {
+  display: block;
+}
+
+.summary-actions {
+  margin-bottom: 16px;
+}
+
+.summary-content {
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  padding: 20px 24px;
+  display: none;
+  line-height: 1.7;
+  font-size: 14px;
+}
+
+.summary-content.visible {
+  display: block;
+}
+
+.summary-content h2 {
+  font-size: 18px;
+  color: var(--amber);
+  margin: 20px 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.summary-content h2:first-child {
+  margin-top: 0;
+}
+
+.summary-content ul {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+
+.summary-content li {
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.summary-content strong {
+  color: var(--text-primary);
+}
+
+.summary-content p {
+  color: var(--text-secondary);
+  margin: 6px 0;
+}
+
 /* Debug Panel */
 .debug-section {
   margin-top: 32px;
   border-top: 1px solid var(--border);
   padding-top: 24px;
+}
+
+.debug-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 16px 0;
+}
+
+.btn-copy {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-copy:hover {
+  background: var(--amber);
+  color: #000;
+  border-color: var(--amber);
+}
+
+.btn-copy.copied {
+  background: var(--success);
+  border-color: var(--success);
+  color: #fff;
 }
 
 .debug-section details {

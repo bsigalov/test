@@ -82,10 +82,24 @@
       <div id="extractionResults"></div>
     </section>
 
+    <!-- LLM Summary -->
+    <section class="summary-section" id="summarySection">
+      <h2 class="section-title">AI Analysis Summary</h2>
+      <div class="summary-actions">
+        <button class="btn btn-primary" id="summarizeBtn" disabled>
+          🤖 Generate Summary
+        </button>
+      </div>
+      <div class="summary-content" id="summaryContent"></div>
+    </section>
+
     <!-- Debug Panel -->
     <section class="debug-section">
       <details>
         <summary>🔧 Debug Information</summary>
+        <div class="debug-toolbar">
+          <button class="btn-copy" id="copyDebugBtn" title="Copy debug info to clipboard">📋 Copy All</button>
+        </div>
         <div class="debug-content" id="debugContent">
           <p style="color: var(--text-muted); font-size: 13px;">
             Debug information will appear here after processing.

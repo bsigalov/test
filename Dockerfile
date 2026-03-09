@@ -16,6 +16,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 COPY server.js ./
+COPY scripts/ ./scripts/
 COPY public/ ./public/
 
 RUN mkdir -p uploads
